@@ -1,3 +1,7 @@
+# 2021-03-24
+
+- Programs should exit only in `main()`.
+
 # 2021-03-15
 
 - Add guidance on omitting zero-value fields during struct initialization.
