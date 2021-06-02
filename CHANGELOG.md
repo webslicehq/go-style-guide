@@ -1,3 +1,9 @@
+# 2021-06-03
+
+- Remove guidance on atomics.
+- Remove guidance on unexported global _ prefix.
+- Remove guidance in naked parameters suggesting C-style comments.
+
 # 2021-04-19
 
 - Programs should exit only in `main()`, preferably at most once.

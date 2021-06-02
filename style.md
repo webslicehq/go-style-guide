@@ -67,7 +67,6 @@ row before the </tbody></table> line.
   - [Error Wrapping](#error-wrapping)
   - [Handle Type Assertion Failures](#handle-type-assertion-failures)
   - [Don't Panic](#dont-panic)
-  - [Use go.uber.org/atomic](#use-gouberorgatomic)
   - [Avoid Mutable Globals](#avoid-mutable-globals)
   - [Avoid Embedding Types in Public Structs](#avoid-embedding-types-in-public-structs)
   - [Avoid Using Built-In Names](#avoid-using-built-in-names)
@@ -91,7 +90,6 @@ row before the </tbody></table> line.
   - [Reduce Nesting](#reduce-nesting)
   - [Unnecessary Else](#unnecessary-else)
   - [Top-level Variable Declarations](#top-level-variable-declarations)
-  - [Prefix Unexported Globals with _](#prefix-unexported-globals-with-_)
   - [Embedding in Structs](#embedding-in-structs)
   - [Local Variable Declarations](#local-variable-declarations)
   - [nil is a valid slice](#nil-is-a-valid-slice)
@@ -1124,7 +1122,7 @@ program initialization: bad things at program startup that should abort the
 program may cause panic.
 
 ```go
-var _statusTemplate = template.Must(template.New("name").Parse("_statusHTML"))
+var statusTemplate = template.Must(template.New("name").Parse("_statusHTML"))
 ```
 
 Even in tests, prefer `t.Fatal` or `t.FailNow` over panics to ensure that the
@@ -1160,64 +1158,6 @@ if err != nil {
 
 <!-- TODO: Explain how to use _test packages. -->
 
-### Use go.uber.org/atomic
-
-Atomic operations with the [sync/atomic] package operate on the raw types
-(`int32`, `int64`, etc.) so it is easy to forget to use the atomic operation to
-read or modify the variables.
-
-[go.uber.org/atomic] adds type safety to these operations by hiding the
-underlying type. Additionally, it includes a convenient `atomic.Bool` type.
-
-  [go.uber.org/atomic]: https://godoc.org/go.uber.org/atomic
-  [sync/atomic]: https://golang.org/pkg/sync/atomic/
-
-<table>
-<thead><tr><th>Bad</th><th>Good</th></tr></thead>
-<tbody>
-<tr><td>
-
-```go
-type foo struct {
-  running int32  // atomic
-}
-
-func (f* foo) start() {
-  if atomic.SwapInt32(&f.running, 1) == 1 {
-     // already running…
-     return
-  }
-  // start the Foo
-}
-
-func (f *foo) isRunning() bool {
-  return f.running == 1  // race!
-}
-```
-
-</td><td>
-
-```go
-type foo struct {
-  running atomic.Bool
-}
-
-func (f *foo) start() {
-  if f.running.Swap(true) {
-     // already running…
-     return
-  }
-  // start the Foo
-}
-
-func (f *foo) isRunning() bool {
-  return f.running.Load()
-}
-```
-
-</td></tr>
-</tbody></table>
-
 ### Avoid Mutable Globals
 
 Avoid mutating global variables, instead opting for dependency injection.
@@ -1231,10 +1171,10 @@ This applies to function pointers as well as other kinds of values.
 ```go
 // sign.go
 
-var _timeNow = time.Now
+var timeNow = time.Now
 
 func sign(msg string) string {
-  now := _timeNow()
+  now := timeNow()
   return signWithTime(msg, now)
 }
 ```
@@ -1266,11 +1206,11 @@ func (s *signer) Sign(msg string) string {
 // sign_test.go
 
 func TestSign(t *testing.T) {
-  oldTimeNow := _timeNow
-  _timeNow = func() time.Time {
+  oldTimeNow := timeNow
+  timeNow = func() time.Time {
     return someFixedTime
   }
-  defer func() { _timeNow = oldTimeNow }()
+  defer func() { timeNow = oldTimeNow }()
 
   assert.Equal(t, want, sign(give))
 }
@@ -1552,10 +1492,10 @@ type Foo struct {
     // ...
 }
 
-var _defaultFoo Foo
+var defaultFoo Foo
 
 func init() {
-    _defaultFoo = Foo{
+    defaultFoo = Foo{
         // ...
     }
 }
@@ -1564,13 +1504,13 @@ func init() {
 </td><td>
 
 ```go
-var _defaultFoo = Foo{
+var defaultFoo = Foo{
     // ...
 }
 
 // or, better, for testability:
 
-var _defaultFoo = defaultFoo()
+var defaultFoo = defaultFoo()
 
 func defaultFoo() Foo {
     return Foo{
@@ -1587,7 +1527,7 @@ type Config struct {
     // ...
 }
 
-var _config Config
+var config Config
 
 func init() {
     // Bad: based on current directory
@@ -2415,7 +2355,7 @@ unless it is not the same type as the expression.
 <tr><td>
 
 ```go
-var _s string = F()
+var s string = F()
 
 func F() string { return "A" }
 ```
@@ -2423,7 +2363,7 @@ func F() string { return "A" }
 </td><td>
 
 ```go
-var _s = F()
+var s = F()
 // Since F already states that it returns a string, we don't need to specify
 // the type again.
 
@@ -2443,59 +2383,9 @@ func (myError) Error() string { return "error" }
 
 func F() myError { return myError{} }
 
-var _e error = F()
+var e error = F()
 // F returns an object of type myError but we want error.
 ```
-
-### Prefix Unexported Globals with _
-
-Prefix unexported top-level `var`s and `const`s with `_` to make it clear when
-they are used that they are global symbols.
-
-Exception: Unexported error values, which should be prefixed with `err`.
-
-Rationale: Top-level variables and constants have a package scope. Using a
-generic name makes it easy to accidentally use the wrong value in a different
-file.
-
-<table>
-<thead><tr><th>Bad</th><th>Good</th></tr></thead>
-<tbody>
-<tr><td>
-
-```go
-// foo.go
-
-const (
-  defaultPort = 8080
-  defaultUser = "user"
-)
-
-// bar.go
-
-func Bar() {
-  defaultPort := 9090
-  ...
-  fmt.Println("Default port", defaultPort)
-
-  // We will not see a compile error if the first line of
-  // Bar() is deleted.
-}
-```
-
-</td><td>
-
-```go
-// foo.go
-
-const (
-  _defaultPort = 8080
-  _defaultUser = "user"
-)
-```
-
-</td></tr>
-</tbody></table>
 
 ### Embedding in Structs
 
@@ -2881,8 +2771,9 @@ return nil
 
 ### Avoid Naked Parameters
 
-Naked parameters in function calls can hurt readability. Add C-style comments
-(`/* ... */`) for parameter names when their meaning is not obvious.
+Naked parameters in function calls can hurt readability. When possible, replace
+naked types with custom types for more readable and type-safe code. This allows
+well documented, forward compatible new states for that parameter.
 
 <table>
 <thead><tr><th>Bad</th><th>Good</th></tr></thead>
@@ -2890,31 +2781,18 @@ Naked parameters in function calls can hurt readability. Add C-style comments
 <tr><td>
 
 ```go
-// func printInfo(name string, isLocal, done bool)
+func printInfo(name string, isLocal, done bool)
 
-printInfo("foo", true, true)
+// printInfo("foo", true, true)
 ```
 
 </td><td>
 
 ```go
-// func printInfo(name string, isLocal, done bool)
-
-printInfo("foo", true /* isLocal */, true /* done */)
-```
-
-</td></tr>
-</tbody></table>
-
-Better yet, replace naked `bool` types with custom types for more readable and
-type-safe code. This allows more than just two states (true/false) for that
-parameter in the future.
-
-```go
 type Region int
 
 const (
-  UnknownRegion Region = iota
+  Unknown Region = iota
   Local
 )
 
@@ -2927,7 +2805,13 @@ const (
 )
 
 func printInfo(name string, region Region, status Status)
+
+// printInfo("foo", Local, StatusDone)
 ```
+
+</td></tr>
+</tbody></table>
+
 
 ### Use Raw String Literals to Avoid Escaping
 
